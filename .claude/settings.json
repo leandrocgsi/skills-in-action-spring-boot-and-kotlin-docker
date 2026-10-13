@@ -1,0 +1,9 @@
+{
+  "enabledPlugins": {
+    "erudio-cicd@erudio-cicd-marketplace": true,
+    "erudio-devops@erudio-devops-marketplace": true,
+    "erudio-frontend@erudio-frontend-marketplace": true,
+    "erudio-git@erudio-git-marketplace": true,
+    "erudio-spring-boot@erudio-spring-boot-marketplace": true
+  }
+}
