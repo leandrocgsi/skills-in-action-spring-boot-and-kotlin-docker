@@ -5,61 +5,92 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  build-test:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v4
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
 
-    - name: Setup Java
-      uses: actions/setup-java@v6
-      with:
-        java-version: '25'
-        distribution: 'temurin'
-        cache: 'maven'
+      - name: Build and Test
+        run: mvn clean package
 
-    - name: Build and Test
-      run: mvn clean package
+  image-test:
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v7
 
-    - name: Docker Compose Build
-      run: docker compose build
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
 
-    - name: Start the API and the infrastructure
-      run: docker compose up -d
+      - name: Build Application
+        run: mvn clean package -DskipTests
 
-    - name: Wait for the API
-      run: |
-        for _ in $(seq 1 40); do
-          if curl -fsS -o /dev/null http://localhost:8080/swagger-ui/index.html; then exit 0; fi
-          sleep 3
-        done
-        docker compose logs
-        exit 1
+      - name: Docker Compose Build
+        run: docker compose build
 
-    - name: API tests with Newman
-      run: >
-        npx --yes newman@6.2.2 run Collections/*.postman_collection.json
-        -e Collections/SPRING_BOOT_KOTLIN_ERUDIO.postman_environment.json
-        --working-dir Collections
+      - name: Start the API and the database
+        run: docker compose up -d
 
-    - name: Show the logs of the containers
-      if: failure()
-      run: docker compose logs
+      - name: Wait for the API
+        run: |
+          for _ in $(seq 1 40); do
+            if curl -fsS -o /dev/null http://localhost:8080/swagger-ui/index.html; then exit 0; fi
+            sleep 3
+          done
+          docker compose logs
+          exit 1
 
-    - name: Stop the API and the infrastructure
-      if: always()
-      run: docker compose down -v
+      - name: API tests with Newman
+        run: npx --yes newman@6.2.2 run Collections/*.postman_collection.json -e Collections/SPRING_BOOT_KOTLIN_ERUDIO.postman_environment.json --working-dir Collections
 
-    - name: Push to Docker Hub
-      run: |
-        docker tag ${{ secrets.DOCKER_USERNAME }}/rest-with-spring-boot-kotlin-erudio:latest \
-                   ${{ secrets.DOCKER_USERNAME }}/rest-with-spring-boot-kotlin-erudio:${{ github.run_id }}
+      - name: Show the logs of the containers
+        if: failure()
+        run: docker compose logs
 
-        docker push ${{ secrets.DOCKER_USERNAME }}/rest-with-spring-boot-kotlin-erudio:latest
-        docker push ${{ secrets.DOCKER_USERNAME }}/rest-with-spring-boot-kotlin-erudio:${{ github.run_id }}
+      - name: Stop the API and the database
+        if: always()
+        run: docker compose down -v
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build-test, image-test]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build Application
+        run: mvn clean package -DskipTests
+
+      - name: Docker Compose Build
+        run: docker compose build
+
+      - name: Push to Docker Hub
+        run: |
+          docker tag ${{ secrets.DOCKER_USERNAME }}/rest-with-spring-boot-kotlin-erudio:latest \
+                     ${{ secrets.DOCKER_USERNAME }}/rest-with-spring-boot-kotlin-erudio:${{ github.run_id }}
+
+          docker push ${{ secrets.DOCKER_USERNAME }}/rest-with-spring-boot-kotlin-erudio:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/rest-with-spring-boot-kotlin-erudio:${{ github.run_id }}

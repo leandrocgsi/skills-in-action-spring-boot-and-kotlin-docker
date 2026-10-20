@@ -19,7 +19,7 @@ services:
       - erudio-network
 
   localstack:
-    image: localstack/localstack:4
+    image: localstack/localstack:4.11.1
     restart: always
     environment:
       TZ: America/Sao_Paulo
